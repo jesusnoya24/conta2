@@ -7,6 +7,7 @@ source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, venv, .github, .git
 version = 0.1
 requirements = python3,kivy,pyjnius
+p4a.branch = v2024.01.21
 orientation = portrait
 fullscreen = 0
 android.archs = arm64-v8a, armeabi-v7a

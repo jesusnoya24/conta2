@@ -4,7 +4,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.core.window import Window
 from kivy.lang import Builder
-from kivymd.app import MDApp
+#from kivymd.app import MDApp
 import datetime
 from urllib.parse import quote
 from kivy.uix.boxlayout import BoxLayout

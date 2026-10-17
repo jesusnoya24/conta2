@@ -4,12 +4,18 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.core.window import Window
 from kivy.lang import Builder
+from kivymd.app import MDApp
 import datetime
 from urllib.parse import quote
 from kivy.uix.boxlayout import BoxLayout
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, Ellipse, Line, Mesh, RoundedRectangle
 from kivy.uix.slider import Slider
 from kivy.animation import Animation
+import math
+from kivy.metrics import dp
+from kivy.properties import BooleanProperty, NumericProperty
+from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.widget import Widget
 #SLIDER parq crear boton slider
 #**PARA LA INTERFAZ FOMFO VERDE PAATEL EL BOTON CIRCULAR CON SOMBRA, LETRAS BLANCAS BUSCAR FUENTE ATRACTIVA Y FORMAL
 
@@ -17,6 +23,124 @@ from kivy.animation import Animation
 #PROXIMO PASO CREAR FUNCION PARA CONSULTAR REGISTRO, Y BLOQUEAR ORIENTQCION
 
 #DropDown (DropDown):Se usa para crear menús desplegables donde se selecciona un ítem de una lista. La lista de ítems se muestra debajo de un widget principal, que suele ser un botón. (proximo item q agregar para swoeccionar dia de reunion)
+
+# ---------------------------------------------------------------------------
+# SWITCH CON ICONOS: luna = ON (tema oscuro), sol = OFF (tema claro)
+# Se dibuja con el canvas, sin imagenes, asi que no suma peso al APK.
+# ---------------------------------------------------------------------------
+def _mezclar(a, b, t):
+    # Mezcla dos colores RGBA (t=0 -> a, t=1 -> b)
+    return [x + (y - x) * t for x, y in zip(a, b)]
+
+
+def _luna(cx, cy, r, angulo=40):
+    # Vertices (x, y, u, v) de una luna creciente para Mesh 'triangle_strip'
+    d = r * 0.62
+    r1 = r * 0.82
+    x = (d * d + r * r - r1 * r1) / (2 * d)
+    y = math.sqrt(max(r * r - x * x, 0))
+    a0 = math.atan2(y, x)
+    b0 = math.atan2(y, x - d)
+    rot = math.radians(angulo)
+    cr, sr = math.cos(rot), math.sin(rot)
+    pts = []
+    for i in range(25):
+        t = i / 24
+        ao = a0 + t * (2 * math.pi - 2 * a0)
+        ai = b0 + t * (2 * math.pi - 2 * b0)
+        for px, py in ((r * math.cos(ao), r * math.sin(ao)),
+                       (d + r1 * math.cos(ai), r1 * math.sin(ai))):
+            pts.append((px * cr - py * sr, px * sr + py * cr))
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    ox = cx - (min(xs) + max(xs)) / 2
+    oy = cy - (min(ys) + max(ys)) / 2
+    verts = []
+    for px, py in pts:
+        verts += [px + ox, py + oy, 0, 0]
+    return verts
+
+
+class IconSwitch(ButtonBehavior, Widget):
+    active = BooleanProperty(True)    # True = luna (oscuro), False = sol (claro)
+    pos_norm = NumericProperty(1)     # 0 = sol, 1 = luna (posicion animada)
+
+    ANCHO = dp(84)
+    ALTO = dp(40)
+    FONDO_CLARO = (0.91, 0.92, 0.94, 1)
+    FONDO_OSCURO = (0.12, 0.13, 0.17, 1)
+    BOTON_CLARO = (1, 1, 1, 1)
+    BOTON_OSCURO = (0.27, 0.29, 0.36, 1)
+    INACTIVO_CLARO = (0.62, 0.64, 0.69, 1)
+    INACTIVO_OSCURO = (0.45, 0.47, 0.54, 1)
+    SOL = (0.96, 0.66, 0.08, 1)
+    LUNA = (0.86, 0.89, 1, 1)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.pos_norm = 1.0 if self.active else 0.0
+        self.bind(pos=self._dibujar, size=self._dibujar,
+                  pos_norm=self._dibujar)
+        self.bind(active=self._animar)
+        self._dibujar()
+
+    def collide_point(self, x, y):
+        # Solo responde al toque sobre el switch, no sobre toda la fila
+        m = dp(8)
+        return (abs(x - self.center_x) <= self.ANCHO / 2 + m and
+                abs(y - self.center_y) <= self.ALTO / 2 + m)
+
+    def on_release(self):
+        self.active = not self.active
+
+    def _animar(self, *_):
+        Animation.cancel_all(self, 'pos_norm')
+        Animation(pos_norm=1.0 if self.active else 0.0,
+                  d=0.22, t='out_quad').start(self)
+
+    def _dibujar(self, *_):
+        t = self.pos_norm
+        w, h = self.ANCHO, self.ALTO
+        x0 = self.center_x - w / 2
+        y0 = self.center_y - h / 2
+        cy = self.center_y
+        izq = x0 + h / 2           # centro del icono del sol
+        der = x0 + w - h / 2       # centro del icono de la luna
+        pad = h * 0.09
+        d_boton = h - 2 * pad
+        r = h * 0.22               # mismo radio para los dos iconos
+
+        fondo = _mezclar(self.FONDO_CLARO, self.FONDO_OSCURO, t)
+        boton = _mezclar(self.BOTON_CLARO, self.BOTON_OSCURO, t)
+        apagado = _mezclar(self.INACTIVO_CLARO, self.INACTIVO_OSCURO, t)
+        c_sol = _mezclar(self.SOL, apagado, t)
+        c_luna = _mezclar(apagado, self.LUNA, t)
+
+        self.canvas.clear()
+        with self.canvas:
+            Color(*fondo)
+            RoundedRectangle(pos=(x0, y0), size=(w, h), radius=[h / 2])
+            Color(*boton)
+            Ellipse(pos=(izq - d_boton / 2 + t * (der - izq), cy - d_boton / 2),
+                    size=(d_boton, d_boton))
+            # sol: circulo + 8 rayos
+            Color(*c_sol)
+            nucleo = r * 0.8
+            Ellipse(pos=(izq - nucleo / 2, cy - nucleo / 2),
+                    size=(nucleo, nucleo))
+            for k in range(8):
+                a = k * math.pi / 4
+                Line(points=[izq + math.cos(a) * r * 0.68,
+                             cy + math.sin(a) * r * 0.68,
+                             izq + math.cos(a) * r,
+                             cy + math.sin(a) * r],
+                     width=dp(1.3), cap='round')
+            # luna creciente
+            Color(*c_luna)
+            v = _luna(der, cy, r)
+            Mesh(vertices=v, indices=list(range(len(v) // 4)),
+                 mode='triangle_strip')
+
 
 # Establecer el tamaño de la ventana
 # medida anterior era 1080, 720 1440
@@ -53,10 +177,9 @@ Builder.load_string('''
    #         font_size: 22
  #           color: (0, 0, 0, 1)
 
-        Switch:
+        IconSwitch:
             id: switch_tema
-            active: False
-            on_active: root.activar_tema_claro(self.active)
+            on_active: root.activar_tema_oscuro(self.active)
             
             
 #    Button:    #tema  claro
@@ -209,12 +332,13 @@ class ContadorApp(BoxLayout):
            self.ids.contador_label.text = f'Asistentes: {0}'
            self.contador = 0
            
-    def activar_tema_claro(self, estado):
+    def activar_tema_oscuro(self, estado):
+        # estado True = luna (oscuro), False = sol (claro)
         if estado:
-            self.tema_claro()
+            self.tema_oscuro()
             
         else:
-            self.tema_oscuro()
+            self.tema_claro()
              
         
     def tema_claro (self):

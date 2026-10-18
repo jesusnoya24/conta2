@@ -20,6 +20,8 @@ jobs:
       - name: Preparar clave de firma
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "Falta el secreto KEYSTORE_BASE64 en Settings > Secrets and variables > Actions"
@@ -27,6 +29,8 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/contador.keystore"
           echo "P4A_RELEASE_KEYSTORE=$RUNNER_TEMP/contador.keystore" >> "$GITHUB_ENV"
+          wc -c "$RUNNER_TEMP/contador.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/contador.keystore" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS"
       - name: Configurar APK firmado
         run: |
           grep -q '^android.release_artifact' buildozer.spec || sed -i '/^\[app\]/a android.release_artifact = apk' buildozer.spec
@@ -36,12 +40,11 @@ jobs:
           P4A_RELEASE_KEYALIAS: ${{ secrets.KEY_ALIAS }}
           P4A_RELEASE_KEYSTORE_PASSWD: ${{ secrets.KEYSTORE_PASSWORD }}
           P4A_RELEASE_KEYALIAS_PASSWD: ${{ secrets.KEY_PASSWORD }}
-        run: buildozer -v android release 2>&1 | tee build.log
+        run: buildozer -v android release 2>&1 | sed -u -E "/P4A_RELEASE_KEY/ s/'[^']*'/'***'/g" | tee build.log
       - name: Ver el error
         if: failure()
         run: |
-          echo "=== ultimas lineas ==="
-          tail -n 60 build.log | cut -c1-300
+          grep -v -E "^#|^export " build.log | grep -n -i -E "error|exception|failed|what went wrong|keystore" | tail -n 40 | cut -c1-300
       - name: Verificar firma
         continue-on-error: true
         run: |
